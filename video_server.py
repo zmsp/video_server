@@ -7,13 +7,14 @@ https://gist.github.com/n3wtron/4624820
 Author: Igor Maculan - n3wtron@gmail.com
 A Simple mjpg stream http server
 """
-import cv2
-import threading
+import argparse
 import http
+import threading
+import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from socketserver import ThreadingMixIn
-import time
-import sys
+
+import cv2
 
 
 class CamHandler(BaseHTTPRequestHandler):
@@ -54,6 +55,7 @@ class CamHandler(BaseHTTPRequestHandler):
                     self.end_headers()
                     self.wfile.write(jpg_bytes)
                     time.sleep(self.server.read_delay)
+
                 except (IOError, ConnectionError):
                     break
         elif self.path.endswith('.html'):
@@ -71,7 +73,7 @@ class CamHandler(BaseHTTPRequestHandler):
 class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
     """Handle requests in a separate thread."""
 
-    def __init__(self, capture_path, server_address, RequestHandlerClass, bind_and_activate=True):
+    def __init__(self, capture_path, server_address, loop_play, RequestHandlerClass, bind_and_activate=True):
         HTTPServer.__init__(self, server_address, RequestHandlerClass, bind_and_activate)
         ThreadingMixIn.__init__(self)
         try:
@@ -86,6 +88,7 @@ class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
         self.read_delay = 1. / fps
         self._lock = threading.Lock()
         self._camera = cv2.VideoCapture(capture_path)
+        self.loop_play = loop_play
 
     def open_video(self):
         if not self._camera.open(self._capture_path):
@@ -96,6 +99,9 @@ class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
             retval, img = self._camera.read()
             if not retval:
                 self.open_video()
+                if self.loop_play:
+                    retval, img = self._camera.read()
+                    return img
         return img
 
     def serve_forever(self, poll_interval=0.5):
@@ -107,20 +113,26 @@ class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
 
 
 def main():
-    address = "0.0.0.0"
-    port = 6420
-    """
-    arg should be:
-        int for streaming cameras. Example 0, 1, 2
-        url for RTSP video: example rtsp://wowzaec2demo.streamlock.net/vod/mp4:BigBuckBunny_115k.mov
-        filepath for video. example sample.mp4
-    """
-    video = "sample.mp4"
-    if (len(sys.argv)>1):
-        video = sys.argv[1]
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-v', '--video-input', default="sample.mp4", help='Specify a video file path, rtsp stream '
+                                                                          'address or camera value')
+    parser.add_argument('-p', '--port', default=6420, type=int)
+    parser.add_argument('-a', '--address', default="0.0.0.0")
+    parser.add_argument("--loop", default=True, action="store_true",
+                        help="Loop video")
+    args = parser.parse_args()
+    print(args)
+
+    address = args.address
+    port = args.port
+    video = args.video_input
+    loop_play = args.loop
+
+    # if (len(sys.argv)>1):
+    #     video = sys.argv[1]
     print("project credit https://gist.github.com/n3wtron/4624820")
     print('{} served on http://{}:{}/cam.mjpg'.format(video, address, port))
-    server = ThreadedHTTPServer(video, (address, port), CamHandler)
+    server = ThreadedHTTPServer(video, (address, port), loop_play, CamHandler)
     server.serve_forever()
 
 

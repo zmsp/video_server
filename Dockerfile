@@ -8,4 +8,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-CMD [ "python", "./video_server.py" ]
+ENTRYPOINT ["python", "./video_server.py" ]
